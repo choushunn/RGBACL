@@ -1,11 +1,14 @@
 import time
 
+# from openpyxl.reader.excel import load_workbook
+
 from fun import Fun_GeneratingPhase, Fun_Diffra2DAngularSpectrum_BerryPhase, Fun_EfieldParameters, \
     Fun_UpdateParticleSingletBerryPhase, Fun_GeneRandomGeneration, CPSWFs_FWHM_calculation, Fun_FitnessLenserror, \
     Fun_GeneRandomGenerationSinglet
 
 try:
     import cupy as np
+
     print(f"cupy {np.__version__}")
 except ModuleNotFoundError as e:
     print(e)
@@ -15,11 +18,12 @@ except ModuleNotFoundError as e:
 from tqdm import tqdm
 import pandas as pd
 
-
+DEBUG = True
 
 
 class ACL:
     def __init__(self):
+        self.start_row = 1
         self.check_env()
         # 波长
         self.lam = np.array([0.5328, 0.6328, 0.7328])
@@ -28,9 +32,9 @@ class ACL:
         # 光速
         self.c = 0.3
         # 焦距
-        self.FocalLength = 61 * self.lamc
+        self.FocalLength = 200 * self.lamc
         # 外径
-        self.R_outter = 100 * self.lamc
+        self.R_outter = 500 * self.lamc
         # 内径
         self.R_inner = 0 * self.lamc
         # Z轴范围
@@ -52,7 +56,7 @@ class ACL:
         self.GD = (np.sqrt(self.R0 ** 2 + self.FocalLength ** 2) - np.sqrt(
             self.r ** 2 + self.FocalLength ** 2)) / self.c  # 将GD全部转化为正值 fs
         self.Nr_gene = 1
-        self.Nz = 50  # 计算焦平面前后2*Nz+1个平面内的光场(Nz==0时，只计算焦平面上的光场)
+        self.Nz = 30  # 计算焦平面前后2*Nz+1个平面内的光场(Nz==0时，只计算焦平面上的光场)
         self.GDmax = 5
         self.GDR = np.zeros((self.Nr_outter))
         j = 0
@@ -64,7 +68,10 @@ class ACL:
                 self.GDR[i] = self.GDmax
                 self.Nr_gene = self.Nr_gene + 1
         self.GDR = self.GDR.T
-        self.N_particle = 6  # 粒子的数量
+        if DEBUG:
+            self.N_particle = 6  # 粒子的数量
+        else:
+            self.N_particle = 30  # 粒子的数量
         self.c1 = 2
         self.c2 = 2  # 用于计算粒子速度的系数 2，2
         self.w = 0.5  # 计算粒子速度的权重0.5
@@ -73,7 +80,7 @@ class ACL:
         self.Vmin = -1
         self.N_gene = 2 * np.pi  # 相位不连续性△φ（λc）的边界
 
-        self.Max_iteration = 100  # 迭代次数
+        self.Max_iteration = 10000  # 迭代次数
         self.Fitness_GlobalBest = 500000
 
     def run(self):
@@ -128,6 +135,7 @@ class ACL:
         XX = ((np.arange(N_sampling / 2 - nn, N_sampling / 2 + 1 + nn) - N_sampling / 2 - 0.5) * Dx)
         XX_Itotal_Ir_Iphi_IzDisplay = np.zeros((2 * nn + 2, 2 * self.Nz + 1))  # 存放不同传播面上总场数据
         Intensity = np.zeros((nn * 2 + 2, 2 * nn * 2 + 2))
+
         # 开始迭代
         for n_iteration in range(self.Max_iteration):
             pbar = tqdm(range(self.N_particle))
@@ -143,7 +151,7 @@ class ACL:
                 for i in range(self.n_lam):
                     wavelength = self.lam[i]
                     # 当前计算的波长对应相位
-                    phasei = phase[i, :]
+                    phasei = phase[i]
                     # (nn*2+2,nn*2+2)
 
                     # Intensity = np.zeros((self.Nr_outter, 2 * self.Nz + 1))
@@ -196,7 +204,7 @@ class ACL:
                 # 将以下数据写入 excel
                 # Focaloffset_Fitness_FWHM_IntensPeak= [Focal_offset_PersonalPresent0, Fitness_PersonalPresent[k], FWHM_PersonalPresent[k], IntensPeak_PersonalPresent[k],SideLobeRatio_PersonalPresent[k],DOF,Intensity_sum]
                 # Gene_Personal = Gene_PersonalPresent[k, :]
-                df = pd.DataFrame({"n_iteration": [n_iteration],
+                df = pd.DataFrame({"n_iteration": [self.start_row],
                                    "Focal_offset_PersonalPresent0_0": [Focal_offset_PersonalPresent0[0].get()],
                                    "Focal_offset_PersonalPresent0_1": [Focal_offset_PersonalPresent0[1].get()],
                                    "Focal_offset_PersonalPresent0_2": [Focal_offset_PersonalPresent0[2].get()],
@@ -210,9 +218,11 @@ class ACL:
                                    "Intensity_sum0": [Intensity_sum[0].get()],
                                    "Intensity_sum1": [Intensity_sum[1].get()],
                                    "Intensity_sum2": [Intensity_sum[2].get()],
-                                   "Gene_Personal": [Gene_PersonalPresent[k, :].get()]
                                    })
-                self.save_results(df)
+                df2 = pd.DataFrame(Gene_PersonalPresent[k, :].get()).transpose()
+
+                self.save_results(df, df2, self.start_row)
+                self.start_row += 1
             # update personal best
             C, I = np.min(Fitness_PersonalPresent), np.argmin(Fitness_PersonalPresent)
             Gene_PersonalBest = Gene_PersonalPresent[I, :]
@@ -298,9 +308,15 @@ class ACL:
 
             # 保存为文件
 
-    def save_results(self, df):
+    def save_results(self, df, df2, start_row=1):
+        # with pd.ExcelWriter(self.filename_SaveData+'.xlsx') as writer:
+        #     book = load_workbook()
         df.to_csv(self.filename_SaveData + ".csv", mode='a', header=False, index=False)
-        df.to_excel(self.filename_SaveData + '.xlsx', sheet_name='Sheet1', header=False, index=False)
+        # df.to_excel(self.filename_SaveData + '.xlsx', sheet_name='Sheet1', header=False, index=False,
+        #             startrow=start_row)
+        df2.to_csv(self.filename_SaveData + "_2.csv", mode='a', header=False, index=False)
+        # df2.to_excel(self.filename_SaveData + '.xlsx', sheet_name='Sheet2', header=False, index=False,
+        #              startrow=start_row)
 
     def check_env(self):
         import os
@@ -309,7 +325,7 @@ class ACL:
         resultFolderName = 'results'
         # 设置保存的文件名
         now = datetime.datetime.now()
-        self.filename_SaveData = f"results/save_{now.strftime('%Y-%m-%d_%H-%M-%S')}"
+        self.filename_SaveData = f"results/save_{now.strftime('%Y-%m-%d')}"
 
         # 检查文件夹是否存在
         if not os.path.exists(resultFolderName):

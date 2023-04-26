@@ -18,7 +18,6 @@ def Fun_GeneratingPhase(GDR, Gene_phase, Nr_gene, Nr_outter, lam, r, FocalLength
     :return:phase,三个波长的相位
     """
     lamc = lam[1]
-    phase = np.zeros((3, 159))
     GDRmax = np.max(GDR)
     p = np.where(GDR == GDRmax)[-1]
     # print(p, type(p))
@@ -47,10 +46,8 @@ def Fun_GeneratingPhase(GDR, Gene_phase, Nr_gene, Nr_outter, lam, r, FocalLength
     phase0 = phasec + GDR * (2 * np.pi * c * (1 / lam[0] - 1 / lamc))
     phase1 = phasec + GDR * (2 * np.pi * c * (1 / lam[1] - 1 / lamc))
     phase2 = phasec + GDR * (2 * np.pi * c * (1 / lam[2] - 1 / lamc))
-    phase[0, :] = phase0
-    phase[1, :] = phase1
-    phase[2, :] = phase2
-    return phase
+
+    return [phase0, phase1, phase2]
 
 
 def FourrierTrans2D(g, Dx, N, flag):
