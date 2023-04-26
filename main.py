@@ -1,5 +1,7 @@
 import time
 
+from matplotlib import pyplot as plt
+
 # from openpyxl.reader.excel import load_workbook
 
 from fun import Fun_GeneratingPhase, Fun_Diffra2DAngularSpectrum_BerryPhase, Fun_EfieldParameters, \
@@ -32,9 +34,9 @@ class ACL:
         # 光速
         self.c = 0.3
         # 焦距
-        self.FocalLength = 200 * self.lamc
+        self.FocalLength = 61 * self.lamc
         # 外径
-        self.R_outter = 500 * self.lamc
+        self.R_outter = 100 * self.lamc
         # 内径
         self.R_inner = 0 * self.lamc
         # Z轴范围
@@ -134,7 +136,7 @@ class ACL:
         nn = 300  # 显示区域范围,单个格子同网格大小一致
         XX = ((np.arange(N_sampling / 2 - nn, N_sampling / 2 + 1 + nn) - N_sampling / 2 - 0.5) * Dx)
         XX_Itotal_Ir_Iphi_IzDisplay = np.zeros((2 * nn + 2, 2 * self.Nz + 1))  # 存放不同传播面上总场数据
-        Intensity = np.zeros((nn * 2 + 2, 2 * nn * 2 + 2))
+        Intensity = np.zeros((nn * 2 + 2,  nn * 2 + 2))
 
         # 开始迭代
         for n_iteration in range(self.Max_iteration):
@@ -144,6 +146,8 @@ class ACL:
                 # 返回三个相位
                 phase = Fun_GeneratingPhase(self.GDR, Gene_PersonalPresent[k], self.Nr_gene, self.Nr_outter, self.lam,
                                             self.r, self.FocalLength, self.c)
+                # plt.plot(phase[0].get())
+                # plt.show()
                 DOF = np.zeros(self.n_lam)
                 Intensity_sum = np.zeros(self.n_lam)
 
@@ -153,16 +157,18 @@ class ACL:
                     # 当前计算的波长对应相位
                     phasei = phase[i]
                     # (nn*2+2,nn*2+2)
-
+                    # plt.plot(phasei.get())
+                    # plt.show()
                     # Intensity = np.zeros((self.Nr_outter, 2 * self.Nz + 1))
                     IPeak = np.zeros((2 * self.Nz + 1))
                     # 计算不同传播面
                     for nnz in range(2 * self.Nz + 1):
-                        Ex, Ey, Ez = Fun_Diffra2DAngularSpectrum_BerryPhase(wavelength, Zd[nnz], self.R_outter,
+                        Ex,Ey,Ez = Fun_Diffra2DAngularSpectrum_BerryPhase(wavelength, Zd[nnz], self.R_outter,
                                                                             self.R_inner, Dx,
                                                                             N_sampling, n_refra1, self.P_metasurface,
                                                                             phasei,
                                                                             self.Nr_outter, nn)
+
                         if TargetFieldPolar == 0:  # Transvers components
                             Intensity = np.abs(Ex) ** 2 + np.abs(Ey) ** 2
                         elif TargetFieldPolar == 1:  # Longitudinal components
@@ -171,6 +177,8 @@ class ACL:
                             Intensity = np.abs(Ex) ** 2 + np.abs(Ey) ** 2 + np.abs(Ez) ** 2
                         XX_Itotal_Ir_Iphi_IzDisplay[:, nnz] = Intensity[:, nn + 1]
                         IPeak[nnz] = np.max(np.max(XX_Itotal_Ir_Iphi_IzDisplay[:, nnz]))
+                    # plt.plot(IPeak.get())
+                    # plt.show()
                     # 传播面上光场计算结束
                     DOF[i] = CPSWFs_FWHM_calculation(IPeak, Zd / self.lamc, self.Nz)  # 计算传播面上的焦深
 
@@ -182,10 +190,13 @@ class ACL:
                     IPeakmax = np.max(IPeak)
                     In = np.where(IPeak == IPeakmax)[-1]  # 找到最大强度对应的位置平面,取最后一个 In 中的元素
                     Intensity_z = XX_Itotal_Ir_Iphi_IzDisplay[:, In]
+                    # print(Intensity_z.T.shape)
+                    # plt.plot(Intensity_z.T.get())
+                    # plt.show()
                     Nxc, Nyc = np.where(np.abs(Intensity_z - IPeakmax) < 10)
                     if Nxc[0] == 1:
                         Nxc[0] = nn + 1
-                    FWHM_x, SideLobeRatio_x, IntensPeak_x = Fun_EfieldParameters(Intensity_z, XX.T, Nxc[0], SpotType)
+                    FWHM_x, SideLobeRatio_x, IntensPeak_x = Fun_EfieldParameters(Intensity_z, XX.T, Nxc[0], SpotType,self.Nr_outter)
                     FWHM_PersonalPresent0[i] = FWHM_x / self.lam[i]
                     IntensPeak_PersonalPresent0[i] = IntensPeak_x
                     SideLobeRatio_PersonalPresent0[i] = SideLobeRatio_x
@@ -234,7 +245,7 @@ class ACL:
             SideLobeRatio_PersonalBest[n_iteration] = SideLobeRatio_PersonalPresent[I]
             IntensPeak_PersonalBest[n_iteration] = IntensPeak_PersonalPresent[I]
             Focal_offset_PersonalBest[n_iteration] = Focal_offset_PersonalPresent[I]
-            NO = 1  # 记录全局最优
+            NO = 0  # 记录全局最优
             if C < self.Fitness_GlobalBest:
                 FWHM_GlobalBest[NO] = FWHM_PersonalPresent[I]
                 SideLobeRatio_GlobalBest[NO] = SideLobeRatio_PersonalPresent[I]
@@ -276,8 +287,8 @@ class ACL:
             #                    "Fitness_GlobalBest": [self.Fitness_GlobalBest]
             #                    })
             # self.save_results(df)
-            # print(n_iteration, FWHM_GlobalBest, SideLobeRatio_GlobalBest, IntensPeak_GlobalBest,
-            #       Focal_offset_GlobalBest, self.Fitness_GlobalBest)
+            print(n_iteration, FWHM_GlobalBest[NO-1], SideLobeRatio_GlobalBest[NO-1], IntensPeak_GlobalBest[NO-1],
+                  Focal_offset_GlobalBest[NO-1], self.Fitness_GlobalBest)
             # mdic = {'lam': self.lam,
             #         'FocalLength': self.FocalLength,
             #         'R_outter': self.R_outter,

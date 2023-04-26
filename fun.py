@@ -1,3 +1,7 @@
+import cmath
+
+import matplotlib.pyplot as plt
+
 try:
     import cupy as np
 except ModuleNotFoundError as e:
@@ -18,35 +22,43 @@ def Fun_GeneratingPhase(GDR, Gene_phase, Nr_gene, Nr_outter, lam, r, FocalLength
     :return:phase,三个波长的相位
     """
     lamc = lam[1]
+    # phase = np.zeros((3, 159))
     GDRmax = np.max(GDR)
     p = np.where(GDR == GDRmax)[-1]
     # print(p, type(p))
     phasec = np.zeros((Nr_outter))
     rr = np.zeros(((Nr_gene)))
     L = np.zeros(((Nr_gene)))
+    # Gene_phase = np.zeros((Nr_gene))
     for j in range(Nr_gene):
+        # print(j)
         if j < Nr_gene - 1:
             # print(p[j])
             rr[j] = r[p[j]]
             L[j] = np.sqrt(rr[j] ** 2 + FocalLength ** 2)
-            phasec[p[j]:p[j + 1] - 1] = 2 * np.pi / lamc * (np.sqrt(r[p[j + 1] - 1] ** 2 + FocalLength ** 2) - np.sqrt(
-                r[p[j]:p[j + 1] - 1] ** 2 + FocalLength ** 2))
+            # print(p[j],j)
+            phasec[p[j]:p[j + 1]] = 2 * np.pi / lamc * (np.sqrt(r[p[j + 1]] ** 2 + FocalLength ** 2) - np.sqrt(
+                r[p[j]:p[j + 1]] ** 2 + FocalLength ** 2))
             if j == 0:
                 rr[j] = 0
-                L = np.sqrt(rr ** 2 + FocalLength ** 2)
-            phasec[p[j]:p[j + 1] - 1] = phasec[p[j]:p[j + 1] - 1] - 2 * np.pi / lamc * (L[j] - L[0]) + Gene_phase[j]
+                L[j] = np.sqrt(rr[j] ** 2 + FocalLength ** 2)
+            phasec[p[j]:p[j + 1]] = phasec[p[j]:p[j + 1]] - 2 * np.pi / lamc * (L[j] - L[0]) + Gene_phase[j]
         else:
             rr[j] = r[p[j]]
             L[j] = np.sqrt(rr[j] ** 2 + FocalLength ** 2)
             phasec[p[j]:Nr_outter] = 2 * np.pi / lamc * (np.sqrt(r[Nr_outter - 1] ** 2 + FocalLength ** 2) - np.sqrt(
                 r[p[j]:Nr_outter] ** 2 + FocalLength ** 2))
             phasec[p[j]:Nr_outter] = phasec[p[j]:Nr_outter] - 2 * np.pi / lamc * (L[j] - L[0]) + Gene_phase[j]
-
+    # print( phasec)
+    # plt.plot(phasec.get())
+    # plt.show()
     phasec = np.transpose(phasec)
     phase0 = phasec + GDR * (2 * np.pi * c * (1 / lam[0] - 1 / lamc))
     phase1 = phasec + GDR * (2 * np.pi * c * (1 / lam[1] - 1 / lamc))
     phase2 = phasec + GDR * (2 * np.pi * c * (1 / lam[2] - 1 / lamc))
-
+    # phase[0, :] = phase0
+    # phase[1, :] = phase1
+    # phase[2, :] = phase2
     return [phase0, phase1, phase2]
 
 
@@ -89,13 +101,31 @@ def Diffraction2DTransPolar(Ex0, Ey0, Z, Wavelen0, n_refr, Dx, N, nn):
     :param nn:
     :return:
     """
+    # num = np.arange(N)
+    # freq = 1. / (N * Dx) * (num - N / 2 + 0.5)
+    # freq_x = freq.T
+    # freq_y = freq_x
+    # n_refr_wave = (n_refr / Wavelen0) ** 2 * np.ones((N))
+    # # fz 计算有误
+    # fz = np.sqrt(n_refr_wave - freq_x ** 2 - freq_y ** 2)
+    # SpectrumX = FourrierTrans2D(Ex0, Dx, N, 1)
+    # SpectrumY = FourrierTrans2D(Ey0, Dx, N, 1)
+    # SpectrumZ = -(freq_x * SpectrumX + freq_y * SpectrumY) / fz * np.exp(1j * 2 * np.pi * fz * Z)
+    # SpectrumX = SpectrumX * np.exp(1j * 2 * np.pi * fz * Z)
+    # SpectrumY = SpectrumY * np.exp(1j * 2 * np.pi * fz * Z)
+    # Ex = FourrierTrans2D(SpectrumX, Dx, N, -1)
+    # Ey = FourrierTrans2D(SpectrumY, Dx, N, -1)
+    # Ez = FourrierTrans2D(SpectrumZ, Dx, N, -1)
+    # Ex = Ex[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]  # 显示区域范围, 单个格子同网格大小一致
+    # Ey = Ey[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]
+    # Ez = Ez[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]
+
     num = np.arange(N)
     freq = 1. / (N * Dx) * (num - N / 2 + 0.5)
-    freq_x = freq.T
-    freq_y = freq_x
-    n_refr_wave = (n_refr / Wavelen0) ** 2 * np.ones((N))
-    # fz 计算有误
-    fz = np.sqrt(abs(n_refr_wave - freq_x ** 2 - freq_y ** 2))
+    freq_x = np.outer(freq, np.ones(N))
+    freq_y = freq_x.T
+    fza = ((n_refr / Wavelen0) ** 2 - freq_x ** 2 - freq_y ** 2).astype(np.complex128)
+    fz = np.sqrt(fza)
     SpectrumX = FourrierTrans2D(Ex0, Dx, N, 1)
     SpectrumY = FourrierTrans2D(Ey0, Dx, N, 1)
     SpectrumZ = -(freq_x * SpectrumX + freq_y * SpectrumY) / fz * np.exp(1j * 2 * np.pi * fz * Z)
@@ -104,12 +134,13 @@ def Diffraction2DTransPolar(Ex0, Ey0, Z, Wavelen0, n_refr, Dx, N, nn):
     Ex = FourrierTrans2D(SpectrumX, Dx, N, -1)
     Ey = FourrierTrans2D(SpectrumY, Dx, N, -1)
     Ez = FourrierTrans2D(SpectrumZ, Dx, N, -1)
-    Ex = Ex[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]  # 显示区域范围, 单个格子同网格大小一致
-    Ey = Ey[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]
-    Ez = Ez[N // 2 - nn:N // 2 + 2 + nn, N // 2 - nn:N // 2 + 2 + nn]
+    nn = int(nn)
+    Ex = Ex[int(N / 2 - nn):int(N / 2 + 2 + nn), int(N / 2 - nn):int(N / 2 + 2 + nn)]
+    Ey = Ey[int(N / 2 - nn):int(N / 2 + 2 + nn), int(N / 2 - nn):int(N / 2 + 2 + nn)]
+    Ez = Ez[int(N / 2 - nn):int(N / 2 + 2 + nn), int(N / 2 - nn):int(N / 2 + 2 + nn)]
     # Exyz = np.zeros((3, 2 * nn + 2, 2 * nn + 2), dtype=np.complex128)
 
-    return [Ex, Ey, Ez]
+    return Ex, Ey, Ez
 
 
 def Fun_Diffra2DAngularSpectrum_BerryPhase(Wavelen0, Zd, R_outter, R_inner, Dx, N, n_refra, P_metasurface, Gene_Lens0,
@@ -129,7 +160,7 @@ def Fun_Diffra2DAngularSpectrum_BerryPhase(Wavelen0, Zd, R_outter, R_inner, Dx, 
     :param nn:
     :return:
     """
-    i_IMG = 1j
+    # i_IMG = 1j
     num = np.arange(N)
     N_sampling = N
     DT = 0  # 偶数
@@ -151,19 +182,19 @@ def Fun_Diffra2DAngularSpectrum_BerryPhase(Wavelen0, Zd, R_outter, R_inner, Dx, 
     Phase_ijUnit1[Rij >= R_outter] = 0
     Phase_ijUnit1[Rij < R_inner] = 0
     ####扩充器件边缘的非结构区域#######################
-    Phase_ijUnit = np.zeros((N_sampling + DT, N_sampling + DT), dtype=np.complex128)
+    Phase_ijUnit = np.zeros((N_sampling + DT, N_sampling + DT))
     AmpProfile_ij = np.zeros((N_sampling + DT, N_sampling + DT))
     Phase_ijUnit[DT // 2:N_sampling + DT // 2, DT // 2:N_sampling + DT // 2] = Phase_ijUnit1[0:N_sampling, 0:N_sampling]
     AmpProfile_ij[DT // 2:N_sampling + DT // 2, DT // 2:N_sampling + DT // 2] = AmpProfile_ij1[0:N_sampling,
                                                                                 0:N_sampling]
 
     # --计算器件出射场-------------------------------
-    Ex0 = AmpProfile_ij * np.exp(i_IMG * Phase_ijUnit)
-    Ey0 = AmpProfile_ij * np.exp(i_IMG * (Phase_ijUnit + np.pi / 2))
+    Ex0 = AmpProfile_ij * np.exp(1j * Phase_ijUnit)
+    Ey0 = AmpProfile_ij * np.exp(1j * (Phase_ijUnit + np.pi / 2))
 
-    Exyz = Diffraction2DTransPolar(Ex0, Ey0, Zd, Wavelen0, n_refra, Dx, N + DT, nn)
+    Ex, Ey, Ez = Diffraction2DTransPolar(Ex0, Ey0, Zd, Wavelen0, n_refra, Dx, N + DT, nn)
 
-    return Exyz
+    return Ex, Ey, Ez
 
 
 def CPSWFs_FWHM_calculation(IntensX, x, X_Center):
@@ -209,7 +240,7 @@ def CPSWFs_FWHM_calculation(IntensX, x, X_Center):
     return FWHM
 
 
-def Fun_EfieldParameters(Intensity, X, Center, SpotType):
+def Fun_EfieldParameters(Intensity, X, Center, SpotType, Nr_outter):
     """
 
     :param Intensity:
@@ -264,7 +295,16 @@ def Fun_EfieldParameters(Intensity, X, Center, SpotType):
             k2 = k2 + 1
         if k2 == Center + 1:
             k2 = N
-        # print(k1, k2, N)
+        if k1 <= 0:
+            k1 = 1
+        if k2 > Intensity.size:
+            k2 = Intensity.size - 1
+        # max_index = np.argmax(Intensity)
+        # if max_index < Nr_outter:
+        #     max_index = Nr_outter
+        # SideLobeRatio = np.max(Intensity[Nr_outter:]) / np.max(Intensity)
+        # SideLobeRatio =
+        # print(k1,k2,N)
         SideLobeRatio = max(np.max(Intensity[0:k1]), np.max(Intensity[k2 - 1:N])) / IntensPeak
     elif SpotType == 1:  # hollow focal spot
         # calculation peak
@@ -353,9 +393,11 @@ def Fun_GeneRandomGenerationSinglet(N_gene, Nr_gene):
     Fitness_PersonalPresent = np.inf
     Fitness_PersonalBest = np.inf
     Gene_PersonalBest = Gene_PersonalPresent
-    Velocity_PersonalPresent = np.sign(np.random.rand(1, Nr_gene) - 0.5) * np.random.rand(Nr_gene)
-    # print(type(Gene_PersonalPresent), type(Fitness_PersonalPresent), type(Fitness_PersonalBest), type(Gene_PersonalBest), type(Velocity_PersonalPresent))
-    # print(Gene_PersonalPresent.shape, Fitness_PersonalPresent, Fitness_PersonalBest, Gene_PersonalBest.shape, Velocity_PersonalPresent.shape)
+    Velocity_PersonalPresent = np.sign(np.random.rand(Nr_gene) - 0.5) * np.random.rand(Nr_gene)
+    # print(type(Gene_PersonalPresent), type(Fitness_PersonalPresent), type(Fitness_PersonalBest),
+    #       type(Gene_PersonalBest), type(Velocity_PersonalPresent))
+    # print(Gene_PersonalPresent.shape, Fitness_PersonalPresent, Fitness_PersonalBest, Gene_PersonalBest.shape,
+    #       Velocity_PersonalPresent.shape)
     return Gene_PersonalPresent, Fitness_PersonalPresent, Fitness_PersonalBest, Gene_PersonalBest, Velocity_PersonalPresent
 
 
