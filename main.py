@@ -6,14 +6,16 @@ from fun import Fun_GeneratingPhase, Fun_Diffra2DAngularSpectrum_BerryPhase, Fun
 
 try:
     import cupy as np
+    print(f"cupy {np.__version__}")
 except ModuleNotFoundError as e:
     print(e)
     import numpy as np
 
+    print(f"numpy {np.__version__}")
 from tqdm import tqdm
 import pandas as pd
 
-print(np.__version__)
+
 
 
 class ACL:
@@ -125,6 +127,7 @@ class ACL:
         nn = 300  # 显示区域范围,单个格子同网格大小一致
         XX = ((np.arange(N_sampling / 2 - nn, N_sampling / 2 + 1 + nn) - N_sampling / 2 - 0.5) * Dx)
         XX_Itotal_Ir_Iphi_IzDisplay = np.zeros((2 * nn + 2, 2 * self.Nz + 1))  # 存放不同传播面上总场数据
+        Intensity = np.zeros((nn * 2 + 2, 2 * nn * 2 + 2))
         # 开始迭代
         for n_iteration in range(self.Max_iteration):
             pbar = tqdm(range(self.N_particle))
@@ -135,12 +138,15 @@ class ACL:
                                             self.r, self.FocalLength, self.c)
                 DOF = np.zeros(self.n_lam)
                 Intensity_sum = np.zeros(self.n_lam)
+
                 # 循环三个通道
                 for i in range(self.n_lam):
                     wavelength = self.lam[i]
                     # 当前计算的波长对应相位
                     phasei = phase[i, :]
-                    Intensity = np.zeros((self.Nr_outter, 2 * self.Nz + 1))
+                    # (nn*2+2,nn*2+2)
+
+                    # Intensity = np.zeros((self.Nr_outter, 2 * self.Nz + 1))
                     IPeak = np.zeros((2 * self.Nz + 1))
                     # 计算不同传播面
                     for nnz in range(2 * self.Nz + 1):
@@ -159,14 +165,18 @@ class ACL:
                         IPeak[nnz] = np.max(np.max(XX_Itotal_Ir_Iphi_IzDisplay[:, nnz]))
                     # 传播面上光场计算结束
                     DOF[i] = CPSWFs_FWHM_calculation(IPeak, Zd / self.lamc, self.Nz)  # 计算传播面上的焦深
+
                     Intensity_sum[i] = np.sum(
-                        IPeak[(2 * self.Nz + 1) // 3:2 * (2 * self.Nz + 1) // 3])  # 取中间 DOF 区域的强度和
+                        IPeak[(2 * self.Nz + 1) // 3:2 * (2 * self.Nz + 1) // 3]) - np.sum(IPeak)  # 取中间 DOF 区域的强度和
+                    if Intensity_sum[i] < 0:
+                        Intensity_sum[i] = np.sum(
+                            IPeak[(2 * self.Nz + 1) // 3:2 * (2 * self.Nz + 1) // 3])
                     IPeakmax = np.max(IPeak)
                     In = np.where(IPeak == IPeakmax)[-1]  # 找到最大强度对应的位置平面,取最后一个 In 中的元素
                     Intensity_z = XX_Itotal_Ir_Iphi_IzDisplay[:, In]
                     Nxc, Nyc = np.where(np.abs(Intensity_z - IPeakmax) < 10)
-                    # if Nxc[0] == 0:
-                    #     Nxc[0] = nn + 1
+                    if Nxc[0] == 1:
+                        Nxc[0] = nn + 1
                     FWHM_x, SideLobeRatio_x, IntensPeak_x = Fun_EfieldParameters(Intensity_z, XX.T, Nxc[0], SpotType)
                     FWHM_PersonalPresent0[i] = FWHM_x / self.lam[i]
                     IntensPeak_PersonalPresent0[i] = IntensPeak_x
@@ -186,6 +196,23 @@ class ACL:
                 # 将以下数据写入 excel
                 # Focaloffset_Fitness_FWHM_IntensPeak= [Focal_offset_PersonalPresent0, Fitness_PersonalPresent[k], FWHM_PersonalPresent[k], IntensPeak_PersonalPresent[k],SideLobeRatio_PersonalPresent[k],DOF,Intensity_sum]
                 # Gene_Personal = Gene_PersonalPresent[k, :]
+                df = pd.DataFrame({"n_iteration": [n_iteration],
+                                   "Focal_offset_PersonalPresent0_0": [Focal_offset_PersonalPresent0[0].get()],
+                                   "Focal_offset_PersonalPresent0_1": [Focal_offset_PersonalPresent0[1].get()],
+                                   "Focal_offset_PersonalPresent0_2": [Focal_offset_PersonalPresent0[2].get()],
+                                   "Fitness_PersonalPresent": [Fitness_PersonalPresent[k].get()],
+                                   "FWHM_PersonalPresent": [FWHM_PersonalPresent[k].get()],
+                                   "IntensPeak_PersonalPresent": [IntensPeak_PersonalPresent[k].get()],
+                                   "SideLobeRatio_PersonalPresent": [SideLobeRatio_PersonalPresent[k].get()],
+                                   "DOF0": [DOF[0].get()],
+                                   "DOF1": [DOF[1].get()],
+                                   "DOF2": [DOF[2].get()],
+                                   "Intensity_sum0": [Intensity_sum[0].get()],
+                                   "Intensity_sum1": [Intensity_sum[1].get()],
+                                   "Intensity_sum2": [Intensity_sum[2].get()],
+                                   "Gene_Personal": [Gene_PersonalPresent[k, :].get()]
+                                   })
+                self.save_results(df)
             # update personal best
             C, I = np.min(Fitness_PersonalPresent), np.argmin(Fitness_PersonalPresent)
             Gene_PersonalBest = Gene_PersonalPresent[I, :]
@@ -206,39 +233,41 @@ class ACL:
                 self.Fitness_GlobalBest = C
                 Gene_GlobalBest = Gene_PersonalPresent[I, :]
                 NO = NO + 1
-                Gene_PersonalPresent, Velocity_PersonalPresent = Fun_UpdateParticleSingletBerryPhase(
-                    Gene_PersonalPresent,
-                    Gene_PersonalBest,
-                    Gene_GlobalBest,
-                    Gene_LensPersonalBestL,
-                    Velocity_PersonalPresent,
-                    self.N_gene, self.N_particle,
-                    self.Nr_gene)
+            Gene_PersonalPresent, Velocity_PersonalPresent = Fun_UpdateParticleSingletBerryPhase(
+                Gene_PersonalPresent,
+                Gene_PersonalBest,
+                Gene_GlobalBest,
+                Gene_LensPersonalBestL,
+                Velocity_PersonalPresent,
+                self.N_gene, self.N_particle,
+                self.Nr_gene)
             # print(Velocity_PersonalPresent.shape)
-            # if n_iteration % 50 == 0:
-            #     B, I = np.sort(Fitness_PersonalBest)[::-1], np.argsort(Fitness_PersonalBest)[::-1]
-            #     for i in range(self.N_particle // 5):
-            #         k = I[i]
-            #         # print(Gene_PersonalPresent.shape,Fitness_PersonalPresent.shape,Fitness_PersonalBest.shape,Gene_PersonalBest.shape,Velocity_PersonalPresent.shape)
-            #         Gene_PersonalPresent[k, :], Fitness_PersonalPresent[k], Fitness_PersonalBest[k], Gene_PersonalBest[
-            #                                                                                          k], Velocity_PersonalPresent[
-            #                                                                                              k,
-            #                                                                                              :] = Fun_GeneRandomGenerationSinglet(
-            #             self.N_gene, self.Nr_gene)
+            if n_iteration % 50 == 0:
+                B, I = np.sort(Fitness_PersonalBest)[::-1], np.argsort(Fitness_PersonalBest)[::-1]
+                for i in range(self.N_particle):
+                    k = I[i]
+                    # print(Gene_PersonalPresent.shape,Fitness_PersonalPresent.shape,Fitness_PersonalBest.shape,Gene_PersonalBest.shape,Velocity_PersonalPresent.shape)
+                    Gene_PersonalPresent[k, :], Fitness_PersonalPresent[k], Fitness_PersonalBest[
+                        k], Gene_PersonalBest, Velocity_PersonalPresent[
+                                               k,
+                                               :] = Fun_GeneRandomGenerationSinglet(
+                        self.N_gene, self.Nr_gene)
 
-            phase = Fun_GeneratingPhase(self.GDR, Gene_GlobalBest, self.Nr_gene, self.Nr_outter, self.lam, self.r,
-                                        self.FocalLength, self.c)
+            phase_best = Fun_GeneratingPhase(self.GDR, Gene_GlobalBest, self.Nr_gene, self.Nr_outter, self.lam, self.r,
+                                             self.FocalLength, self.c)
 
             # 输出当前迭代结果
-            df = pd.DataFrame({"n_iteration": [n_iteration],
-                               "FWHM_GlobalBest": [FWHM_GlobalBest.get()],
-                               "SideLobeRatio_GlobalBest": [SideLobeRatio_GlobalBest.get()],
-                               "IntensPeak_GlobalBest": [IntensPeak_GlobalBest.get()],
-                               "Focal_offset_GlobalBest": [Focal_offset_GlobalBest.get()],
-                               "Fitness_GlobalBest": [self.Fitness_GlobalBest]
-                               })
-            self.save_results(df)
-
+            # print
+            # df = pd.DataFrame({"n_iteration": [n_iteration],
+            #                    "FWHM_GlobalBest": [FWHM_GlobalBest.get()],
+            #                    "SideLobeRatio_GlobalBest": [SideLobeRatio_GlobalBest.get()],
+            #                    "IntensPeak_GlobalBest": [IntensPeak_GlobalBest.get()],
+            #                    "Focal_offset_GlobalBest": [Focal_offset_GlobalBest.get()],
+            #                    "Fitness_GlobalBest": [self.Fitness_GlobalBest]
+            #                    })
+            # self.save_results(df)
+            # print(n_iteration, FWHM_GlobalBest, SideLobeRatio_GlobalBest, IntensPeak_GlobalBest,
+            #       Focal_offset_GlobalBest, self.Fitness_GlobalBest)
             # mdic = {'lam': self.lam,
             #         'FocalLength': self.FocalLength,
             #         'R_outter': self.R_outter,
