@@ -2,3 +2,5 @@ numpy==1.24.3
 cupy-cuda11x==12.0.0
 tqdm
 pandas
+matplotlib
+cudatoolkit

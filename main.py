@@ -20,7 +20,7 @@ except ModuleNotFoundError as e:
 from tqdm import tqdm
 import pandas as pd
 
-DEBUG = True
+DEBUG = True  # True
 
 
 class ACL:
@@ -34,9 +34,9 @@ class ACL:
         # 光速
         self.c = 0.3
         # 焦距
-        self.FocalLength = 61 * self.lamc
+        self.FocalLength = 200 * self.lamc
         # 外径
-        self.R_outter = 100 * self.lamc
+        self.R_outter = 500 * self.lamc
         # 内径
         self.R_inner = 0 * self.lamc
         # Z轴范围
@@ -83,9 +83,10 @@ class ACL:
         self.N_gene = 2 * np.pi  # 相位不连续性△φ（λc）的边界
 
         self.Max_iteration = 10000  # 迭代次数
-        self.Fitness_GlobalBest = 500000
+        self.Fitness_GlobalBest = np.inf
 
     def run(self):
+        N_sampling = 8192
         # 放当前的参数：半高全宽、旁瓣比、强度(多波长)
         FWHM_PersonalPresent0 = np.zeros((self.n_lam))
         SideLobeRatio_PersonalPresent0 = np.zeros((self.n_lam))
@@ -104,11 +105,11 @@ class ACL:
         SpotType = 0  # 0-solid focal spot; 1-hollow focal spot
         TargetFWHM = 0.5
         TargetSidlobe = 0.25
-        TargetPeakIntensity = 100000
+        TargetPeakIntensity = 80000
         TargetFocal_offset = 0.0001
         FieldOfView = 10 * self.lamc
         TargetFieldPolar = 2  # 0-Transverse Polar; 1-Longitudinal Polar; 2-All Polarization components
-        N_sampling = 1024
+
         n_refra0 = 1.46  # refractive index of the medium before lens
         n_refra1 = 1  # refractive index of the medium after lens
         N_Phase = 32  # 相位的数目!!!!!!必须与所提供的超表面结构个数一致  因为在Fun_Diffra2DAngularSpectrum中相位个数是按照超表面结构的个数提供的
@@ -121,10 +122,11 @@ class ACL:
         IntensPeak_PersonalBest = np.zeros((self.Max_iteration))
         Focal_offset_PersonalBest = np.zeros((self.Max_iteration))
         # 全局最好
-        FWHM_GlobalBest = np.zeros(self.Max_iteration)
-        SideLobeRatio_GlobalBest = np.zeros(self.Max_iteration)
-        IntensPeak_GlobalBest = np.zeros(self.Max_iteration)
-        Focal_offset_GlobalBest = np.zeros(self.Max_iteration)
+        FWHM_GlobalBest = 0
+        SideLobeRatio_GlobalBest = 0
+        IntensPeak_GlobalBest = 0
+        Focal_offset_GlobalBest = 0
+        Fitness_PersonalAllBest = np.zeros((self.N_particle * 5))
         if self.Nz > 0:
             dZ = self.Zrange / (2 * self.Nz)
         else:
@@ -136,8 +138,8 @@ class ACL:
         nn = 300  # 显示区域范围,单个格子同网格大小一致
         XX = ((np.arange(N_sampling / 2 - nn, N_sampling / 2 + 1 + nn) - N_sampling / 2 - 0.5) * Dx)
         XX_Itotal_Ir_Iphi_IzDisplay = np.zeros((2 * nn + 2, 2 * self.Nz + 1))  # 存放不同传播面上总场数据
-        Intensity = np.zeros((nn * 2 + 2,  nn * 2 + 2))
-
+        Intensity = np.zeros((nn * 2 + 2, nn * 2 + 2))
+        NO = 0  # 记录全局最优
         # 开始迭代
         for n_iteration in range(self.Max_iteration):
             pbar = tqdm(range(self.N_particle))
@@ -163,7 +165,7 @@ class ACL:
                     IPeak = np.zeros((2 * self.Nz + 1))
                     # 计算不同传播面
                     for nnz in range(2 * self.Nz + 1):
-                        Ex,Ey,Ez = Fun_Diffra2DAngularSpectrum_BerryPhase(wavelength, Zd[nnz], self.R_outter,
+                        Ex, Ey, Ez = Fun_Diffra2DAngularSpectrum_BerryPhase(wavelength, Zd[nnz], self.R_outter,
                                                                             self.R_inner, Dx,
                                                                             N_sampling, n_refra1, self.P_metasurface,
                                                                             phasei,
@@ -196,7 +198,8 @@ class ACL:
                     Nxc, Nyc = np.where(np.abs(Intensity_z - IPeakmax) < 10)
                     if Nxc[0] == 1:
                         Nxc[0] = nn + 1
-                    FWHM_x, SideLobeRatio_x, IntensPeak_x = Fun_EfieldParameters(Intensity_z, XX.T, Nxc[0], SpotType,self.Nr_outter)
+                    FWHM_x, SideLobeRatio_x, IntensPeak_x = Fun_EfieldParameters(Intensity_z, XX.T, Nxc[0], SpotType,
+                                                                                 self.Nr_outter)
                     FWHM_PersonalPresent0[i] = FWHM_x / self.lam[i]
                     IntensPeak_PersonalPresent0[i] = IntensPeak_x
                     SideLobeRatio_PersonalPresent0[i] = SideLobeRatio_x
@@ -234,6 +237,7 @@ class ACL:
 
                 self.save_results(df, df2, self.start_row)
                 self.start_row += 1
+
             # update personal best
             C, I = np.min(Fitness_PersonalPresent), np.argmin(Fitness_PersonalPresent)
             Gene_PersonalBest = Gene_PersonalPresent[I, :]
@@ -245,15 +249,18 @@ class ACL:
             SideLobeRatio_PersonalBest[n_iteration] = SideLobeRatio_PersonalPresent[I]
             IntensPeak_PersonalBest[n_iteration] = IntensPeak_PersonalPresent[I]
             Focal_offset_PersonalBest[n_iteration] = Focal_offset_PersonalPresent[I]
-            NO = 0  # 记录全局最优
+
             if C < self.Fitness_GlobalBest:
-                FWHM_GlobalBest[NO] = FWHM_PersonalPresent[I]
-                SideLobeRatio_GlobalBest[NO] = SideLobeRatio_PersonalPresent[I]
-                IntensPeak_GlobalBest[NO] = IntensPeak_PersonalPresent[I]
-                Focal_offset_GlobalBest[NO] = Focal_offset_PersonalPresent[I]
+                FWHM_GlobalBest = FWHM_PersonalPresent[I]
+                SideLobeRatio_GlobalBest = SideLobeRatio_PersonalPresent[I]
+                IntensPeak_GlobalBest = IntensPeak_PersonalPresent[I]
+                Focal_offset_GlobalBest = Focal_offset_PersonalPresent[I]
                 self.Fitness_GlobalBest = C
                 Gene_GlobalBest = Gene_PersonalPresent[I, :]
+                NO_i = NO % (self.N_particle * 5)
+                Fitness_PersonalAllBest[NO_i] = C
                 NO = NO + 1
+
             Gene_PersonalPresent, Velocity_PersonalPresent = Fun_UpdateParticleSingletBerryPhase(
                 Gene_PersonalPresent,
                 Gene_PersonalBest,
@@ -264,7 +271,7 @@ class ACL:
                 self.Nr_gene)
             # print(Velocity_PersonalPresent.shape)
             if n_iteration % 50 == 0:
-                B, I = np.sort(Fitness_PersonalBest)[::-1], np.argsort(Fitness_PersonalBest)[::-1]
+                B, I = np.sort(Fitness_PersonalAllBest)[::-1], np.argsort(Fitness_PersonalAllBest)[::-1]
                 for i in range(self.N_particle):
                     k = I[i]
                     # print(Gene_PersonalPresent.shape,Fitness_PersonalPresent.shape,Fitness_PersonalBest.shape,Gene_PersonalBest.shape,Velocity_PersonalPresent.shape)
@@ -287,8 +294,8 @@ class ACL:
             #                    "Fitness_GlobalBest": [self.Fitness_GlobalBest]
             #                    })
             # self.save_results(df)
-            print(n_iteration, FWHM_GlobalBest[NO-1], SideLobeRatio_GlobalBest[NO-1], IntensPeak_GlobalBest[NO-1],
-                  Focal_offset_GlobalBest[NO-1], self.Fitness_GlobalBest)
+            print(n_iteration, FWHM_GlobalBest, SideLobeRatio_GlobalBest, IntensPeak_GlobalBest,
+                  Focal_offset_GlobalBest, self.Fitness_GlobalBest)
             # mdic = {'lam': self.lam,
             #         'FocalLength': self.FocalLength,
             #         'R_outter': self.R_outter,

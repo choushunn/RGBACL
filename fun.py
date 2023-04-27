@@ -1,6 +1,6 @@
 import cmath
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 try:
     import cupy as np
@@ -29,7 +29,7 @@ def Fun_GeneratingPhase(GDR, Gene_phase, Nr_gene, Nr_outter, lam, r, FocalLength
     phasec = np.zeros((Nr_outter))
     rr = np.zeros(((Nr_gene)))
     L = np.zeros(((Nr_gene)))
-    # Gene_phase = np.zeros((Nr_gene))
+    #Gene_phase = np.zeros((Nr_gene))
     for j in range(Nr_gene):
         # print(j)
         if j < Nr_gene - 1:
@@ -43,15 +43,18 @@ def Fun_GeneratingPhase(GDR, Gene_phase, Nr_gene, Nr_outter, lam, r, FocalLength
                 rr[j] = 0
                 L[j] = np.sqrt(rr[j] ** 2 + FocalLength ** 2)
             phasec[p[j]:p[j + 1]] = phasec[p[j]:p[j + 1]] - 2 * np.pi / lamc * (L[j] - L[0]) + Gene_phase[j]
+            #phasec[p[j]:p[j + 1]] = phasec[p[j]:p[j + 1]] + Gene_phase[j]
+
         else:
             rr[j] = r[p[j]]
             L[j] = np.sqrt(rr[j] ** 2 + FocalLength ** 2)
             phasec[p[j]:Nr_outter] = 2 * np.pi / lamc * (np.sqrt(r[Nr_outter - 1] ** 2 + FocalLength ** 2) - np.sqrt(
                 r[p[j]:Nr_outter] ** 2 + FocalLength ** 2))
             phasec[p[j]:Nr_outter] = phasec[p[j]:Nr_outter] - 2 * np.pi / lamc * (L[j] - L[0]) + Gene_phase[j]
+            #phasec[p[j]:Nr_outter] = phasec[p[j]:Nr_outter] + Gene_phase[j]
     # print( phasec)
-    # plt.plot(phasec.get())
-    # plt.show()
+     #plt.plot(phasec.get())
+     #plt.show()
     phasec = np.transpose(phasec)
     phase0 = phasec + GDR * (2 * np.pi * c * (1 / lam[0] - 1 / lamc))
     phase1 = phasec + GDR * (2 * np.pi * c * (1 / lam[1] - 1 / lamc))
@@ -372,9 +375,9 @@ def Fun_FitnessLenserror(TargetFWHM, TargetSidlobe, TargetPeakIntensity, TargetF
     :param Intensity_sum:
     :return:
     """
-    fitness1 = abs(TargetPeakIntensity - IntensPeak) / 100  # 强度偏差500
+    fitness1 = abs(TargetPeakIntensity - IntensPeak) / 10  # 强度偏差500
     fitness2 = abs(Focal_offset - TargetFocal_offset) * 10000  # 焦斑偏移量0.001
-    fitness3 = abs(FWHM - TargetFWHM) * 10  # FWHM 0.1
+    fitness3 = abs(FWHM - TargetFWHM) * 100  # FWHM 0.1
     fitness4 = abs(SideLobe - TargetSidlobe)
     fitness5 = abs(DOF[0] - DOF[1]) + abs(DOF[2] - DOF[1])  # 计算其他波长较深与中心波长较深的偏离
     fitness6 = (abs(Intensity_sum[0] - Intensity_sum[1]) + abs(Intensity_sum[2] - Intensity_sum[1])) / 100
@@ -444,10 +447,10 @@ def Fun_UpdateParticleSingletBerryPhase(Gene_Lens, Gene_LensPersonalBest, Gene_L
 
     for k in range(N_particle):
         # Update velocity
-        Velocity[k, :] = w * Velocity[k, :] + c1 * np.random.rand(1, Nr_gene1) * (
+        Velocity[k, :] = w * Velocity[k, :] + c1 * np.random.rand( Nr_gene1) * (
                 Gene_LensPersonalBest - Gene_Lens[k, :]) + c2 * (
-                                 q * np.random.rand(1, Nr_gene1) * (Gene_LensGlobalBest - Gene_Lens[k, :]) + (
-                                 1 - q) * np.random.rand(1, Nr_gene1) * (
+                                 q * np.random.rand( Nr_gene1) * (Gene_LensGlobalBest - Gene_Lens[k, :]) + (
+                                 1 - q) * np.random.rand(Nr_gene1) * (
                                          Gene_LensPersonalBestL - Gene_Lens[k, :]))
 
         # Update genes
@@ -456,17 +459,17 @@ def Fun_UpdateParticleSingletBerryPhase(Gene_Lens, Gene_LensPersonalBest, Gene_L
         # If the gene values reach their boundary, then the values are set as the boundary value, and the sign of velocity is inverted.
 
         # Lower boundary
-        Velocity[k, np.where(Gene_Lens[k, :] <= -N_gene)[0]] = np.absolute(
-            Velocity[k, np.where(Gene_Lens[k, :] <= -N_gene)[0]])
-        Gene_Lens[k, np.where(Gene_Lens[k, :] <= -N_gene)[0]] = N_gene
-        Velocity[k, np.where(Velocity[k, :] < Vmin)[0]] = Vmin
+        Velocity[k, np.where(Gene_Lens[k, :] <= -N_gene)] = np.abs(
+            Velocity[k, np.where(Gene_Lens[k, :] <= -N_gene)])
+        Gene_Lens[k, np.where(Gene_Lens[k, :] <= -N_gene)] = N_gene
+        Velocity[k, np.where(Velocity[k, :] < Vmin)] = Vmin
 
         # Upper boundary velocity
-        Velocity[k, np.where(Velocity[k, :] > Vmax)[0]] = Vmax
+        Velocity[k, np.where(Velocity[k, :] > Vmax)] = Vmax
 
         # Upper boundary gene of Lens #1 and Lens#2
-        Gene_Lens[k, np.where(Gene_Lens[k, :] >= N_gene)[0]] = N_gene
-        Velocity[k, np.where(Gene_Lens[k, :] >= N_gene)[0]] = -np.absolute(
-            Velocity[k, np.where(Gene_Lens[k, :] >= N_gene)[0]])
+        Gene_Lens[k, np.where(Gene_Lens[k, :] >= N_gene)] = N_gene
+        Velocity[k, np.where(Gene_Lens[k, :] >= N_gene)] = -np.abs(
+            Velocity[k, np.where(Gene_Lens[k, :] >= N_gene)])
 
     return Gene_Lens, Velocity
